@@ -326,14 +326,21 @@ type DialProxy struct {
 	// If non-nil, src is not closed automatically.
 	OnDialError func(src net.Conn, dstDialErr error)
 
-	// ProxyProtocolVersion optionally specifies the version of
-	// HAProxy's PROXY protocol to use. The PROXY protocol provides
-	// connection metadata to the DialProxy target, via a header
-	// inserted ahead of the client's traffic. The DialProxy target
-	// must explicitly support and expect the PROXY header; there is
-	// no graceful downgrade.
-	// If zero, no PROXY header is sent. Currently, version 1 is supported.
-	ProxyProtocolVersion int
+	// ProxyProtocolConfig is a set of PROXY Protocol-related customizations.
+	ProxyProtocolConfig ProxyProtocolConfiguration
+}
+
+// ProxyProtocolConfiguration defines PROXY protocol configuration parameters.
+type ProxyProtocolConfiguration struct {
+	// Version optionally specifies the version of HAProxy's PROXY protocol to
+	// use. The PROXY protocol provides connection metadata to the DialProxy
+	// target, via a header inserted ahead of the client's traffic. The DialProxy
+	// target must explicitly support and expect the PROXY header; there is no
+	// graceful downgrade. If zero, no PROXY header is sent. Currently, version 1
+	// is supported.
+	Version int
+	// DestinationIP specifies an explicit destination IP to be used.
+	DestinationIP net.IP
 }
 
 // UnderlyingConn returns c.Conn if c of type *Conn,
@@ -388,7 +395,7 @@ func (dp *DialProxy) HandleConn(src net.Conn) {
 }
 
 func (dp *DialProxy) sendProxyHeader(w io.Writer, src net.Conn) error {
-	switch dp.ProxyProtocolVersion {
+	switch dp.ProxyProtocolConfig.Version {
 	case 0:
 		return nil
 	case 1:
@@ -398,6 +405,9 @@ func (dp *DialProxy) sendProxyHeader(w io.Writer, src net.Conn) error {
 		}
 		if a, ok := src.LocalAddr().(*net.TCPAddr); ok {
 			dstAddr = a
+			if destIP := dp.ProxyProtocolConfig.DestinationIP; destIP != nil {
+				dstAddr.IP = destIP
+			}
 		}
 
 		if srcAddr == nil || dstAddr == nil {
@@ -412,7 +422,7 @@ func (dp *DialProxy) sendProxyHeader(w io.Writer, src net.Conn) error {
 		_, err := fmt.Fprintf(w, "PROXY %s %s %s %d %d\r\n", family, srcAddr.IP, dstAddr.IP, srcAddr.Port, dstAddr.Port)
 		return err
 	default:
-		return fmt.Errorf("PROXY protocol version %d not supported", dp.ProxyProtocolVersion)
+		return fmt.Errorf("PROXY protocol version %d not supported", dp.ProxyProtocolConfig.Version)
 	}
 }
 
