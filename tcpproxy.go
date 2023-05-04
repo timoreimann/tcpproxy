@@ -391,7 +391,11 @@ func (dp *DialProxy) HandleConn(src net.Conn) {
 	errc := make(chan error, 1)
 	go proxyCopy(errc, src, dst)
 	go proxyCopy(errc, dst, src)
-	<-errc
+	if err := <-errc; err != nil {
+		log.Printf("tcpproxy: for incoming conn %v and outgoing conn %v, error proxying data: %v", src.RemoteAddr().String(), dst.RemoteAddr().String(), err)
+	} else {
+		log.Printf("tcpproxy: proxying between incoming conn %v and outgoing conn %v successful", src.RemoteAddr().String(), dst.RemoteAddr().String())
+	}
 }
 
 func (dp *DialProxy) sendProxyHeader(w io.Writer, src net.Conn) error {
